@@ -88,7 +88,7 @@ if not df_raw.empty:
 
     if selected_participant == GUIDE_OPTION:
         # --- 초기 안내 페이지 ---
-        st.header('환영합니다! 🙏 경건 시트 분석 대시보드')
+
         st.markdown('---')
         st.info("👈 **왼쪽 사이드바**에서 분석을 원하는 **참여자 이름**을 선택해 주세요.")
         
