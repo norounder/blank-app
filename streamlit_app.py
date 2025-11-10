@@ -1,65 +1,42 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
-import re 
-import warnings
-import gspread
-
-import matplotlib.pyplot as plt
 import matplotlib.font_manager as fm
 import os
-import streamlit as st # st.error 등을 사용하기 위해 필요
-
-# 폰트 파일 경로 (NanumGothic.ttf가 app.py와 같은 루트 폴더에 있다고 가정)
-FONT_PATH = 'NanumGothic.ttf' 
-
-try:
-    # 폰트 파일을 Matplotlib 폰트 관리자에 수동으로 추가합니다.
-    fm.fontManager.addfont(FONT_PATH)
-    
-    # 등록된 폰트 이름 가져오기
-    font_name = fm.FontProperties(fname=FONT_PATH).get_name()
-    
-    # Matplotlib 기본 폰트 설정
-    plt.rc('font', family=font_name)
-    
-    # 마이너스 기호 깨짐 방지
-    plt.rcParams['axes.unicode_minus'] = False 
-    
-except FileNotFoundError:
-    st.error("오류: NanumGothic.ttf 파일을 찾을 수 없습니다. 경로를 확인하세요.")
-except Exception as e:
-    st.error(f"폰트 설정 중 예기치 않은 오류 발생. 오류: {e}")
-    plt.rc('font', family='sans-serif') # 기본 폰트로 대체
-
+import re 
+import gspread 
+import warnings
 warnings.filterwarnings('ignore', category=FutureWarning)
 
 st.set_page_config(layout="wide")
 st.title('📖 경건 시트 데이터 분석 대시보드')
 
-# **중요: 여기에 Google Sheets 문서의 ID를 붙여넣으세요.**
-# URL에서 'd/'와 '/edit' 사이에 있는 문자열입니다.
-# 예: https://docs.google.com/spreadsheets/d/ 이 부분 /edit...
-SPREADSHEET_ID = '1mBwIdifaAgZN107f0lYz2i-WvoPBwesSqkzCNtUOX2U' 
-SHEET_NAME = '경건시트' # 데이터를 불러올 시트의 이름
+# --- 폰트 설정 (이전 문제 해결 코드) ---
+FONT_PATH = 'NanumGothic.ttf' 
 
-# 1. 데이터 불러오기 (Google Sheets API 사용)
-@st.cache_data(ttl=600) # 10분(600초)마다 데이터를 새로고침
+try:
+    fm.fontManager.addfont(FONT_PATH)
+    font_name = fm.FontProperties(fname=FONT_PATH).get_name()
+    plt.rc('font', family=font_name)
+    plt.rcParams['axes.unicode_minus'] = False 
+    
+except Exception as e:
+    st.error(f"폰트 설정 중 오류 발생. 기본 폰트로 대체됩니다. 오류: {e}")
+    plt.rc('font', family='sans-serif')
+
+
+# --- Google Sheets API 설정 ---
+SPREADSHEET_ID = '1mBwIdifaAgZN107f0lYz2i-WvoPBwesSqkzCNtUOX2U' 
+SHEET_NAME = '경건시트' 
+
+@st.cache_data(ttl=600) 
 def load_data_from_gspread():
     try:
-        # st.secrets에서 서비스 계정 정보를 가져와 인증
         gc = gspread.service_account_from_dict(st.secrets["gcp_service_account"])
-        
-        # 스프레드시트 열기
         spreadsheet = gc.open_by_key(SPREADSHEET_ID)
-        
-        # 특정 시트 열기
         worksheet = spreadsheet.worksheet(SHEET_NAME)
-        
-        # 모든 데이터를 DataFrame으로 변환
         df_raw = pd.DataFrame(worksheet.get_all_records())
         
-        # 제공된 헤더로 컬럼명 명확히 지정
         df_raw.columns = [
             'Timestamp', 
             'Participant', 
@@ -70,131 +47,148 @@ def load_data_from_gspread():
             'Final_Value_Text'
         ]
         
-        # 값이 없는 행(데이터가 없는 행) 제거
         df_raw = df_raw.dropna(subset=['Participant']).reset_index(drop=True)
-        
         return df_raw
     except Exception as e:
-        st.error(f"Google Sheets API 로드 중 오류가 발생했습니다. secrets.toml 설정과 스프레드시트 공유 권한을 확인하세요. 오류: {e}")
+        st.error(f"Google Sheets API 로드 중 오류가 발생했습니다. secrets 설정과 공유 권한을 확인하세요. 오류: {e}")
         return pd.DataFrame()
 
 df_raw = load_data_from_gspread() 
 
 if not df_raw.empty:
-    # ... (이하 데이터 정리 및 시각화 코드는 동일합니다) ...
-    # 2. Google Sheets 수식을 Pandas로 변환하여 데이터 정리
     
+    # --- 데이터 정리 및 변환 ---
     df = pd.DataFrame()
+    TIME_FORMAT = '%Y. %m. %d' 
     
-    # 2-1. Date: 날짜 형식 변환
-    TIME_FORMAT = '%Y. %m. %d %p %I:%M:%S'
-
-    df['Date'] = pd.to_datetime(
-        df_raw['Timestamp'], 
-        format=TIME_FORMAT, 
-        errors='coerce'  # 변환할 수 없는 값은 NaT(Not a Time)으로 처리하여 오류 방지
-    )
-
-    # NaT로 변환된 행 제거 (선택 사항이지만 데이터 안정성 위해 권장)
-    df = df.dropna(subset=['Date'])
-
-    # 마지막으로 원하는 날짜 형식으로 변환
-    TIME_FORMAT = '%Y. %m. %d %p %I:%M:%S'
-
-    df['Date'] = pd.to_datetime(
-        df_raw['Timestamp'], 
-        format=TIME_FORMAT, 
-        errors='coerce'  # 변환할 수 없는 값은 NaT(Not a Time)으로 처리하여 오류 방지
-    )
-
-    # NaT로 변환된 행 제거 (선택 사항이지만 데이터 안정성 위해 권장)
-    df = df.dropna(subset=['Date'])
-
-    # 마지막으로 원하는 날짜 형식으로 변환
-    df['Date'] = df['Date'].dt.strftime('%Y-%m-%d')
+    # 1. 날짜 변환 및 오류 처리
+    df['Date_Time'] = pd.to_datetime(df_raw['Timestamp'], format=TIME_FORMAT, errors='coerce')
+    df = df.dropna(subset=['Date_Time']).copy() 
+    df['Date'] = df['Date_Time'].dt.strftime('%Y-%m-%d')
     
-    # 2-2. Participant: 참여자 이름 정리
+    # 2. 참여자 정리
     df['Participant'] = df_raw['Participant'].astype(str).str.strip()
     
-    # 2-3. Attended: 참석 여부 (1/0)
-    df['Attended'] = df_raw['Attendance_Text'].astype(str).str.contains('참석', na=False).astype(int)
+    # 3. 항목별 데이터 추출 및 정리
+    df['Attendance'] = df_raw['Attendance_Text'].astype(str).str.contains('참석', na=False).astype(int)
+    df['QT_Count'] = df_raw['Chapter_Count_Text'].astype(str).str.extract('(\d+)').astype(float).fillna(0)
+    df['Chapter_Reading'] = df_raw['Chapter_Range_Text'].astype(str).str.extract(r'(\d+)\D*$').astype(float).fillna(0)
+    df['Prayer_Count'] = df_raw['Days_Text'].astype(str).str.extract('(\d+)').astype(float).fillna(0)
+    # 정규표현식을 사용하여 숫자만 추출하고, 빈 문자열을 '0'으로 대체 후 float 변환
+    df['Devotion_Fee'] = df_raw['Final_Value_Text'].astype(str).str.replace(r'[^\d]', '', regex=True).replace('', '0').astype(float)
     
-    # 2-4. Chapter_Count: QT 횟수에서 숫자 추출
-    df['Chapter_Count'] = df_raw['Chapter_Count_Text'].astype(str).str.extract('(\d+)').astype(float).fillna(0)
+    # --- UI 및 필터 ---
     
-    # 2-5. Chapter_End: 말씀 읽기에서 마지막 숫자 추출 (룩업 로직 대체)
-    # 예: '13~15장' -> '15'
-    df['Chapter_End'] = df_raw['Chapter_Range_Text'].astype(str).str.extract(r'(\d+)\D*$').astype(float).fillna(0)
-
-    # 2-6. Days: 기도에서 숫자 추출 (일당)
-    df['Days'] = df_raw['Days_Text'].astype(str).str.extract('(\d+)').astype(float).fillna(0)
+    st.sidebar.header('분석 대상 선택')
     
-    # 2-7. Final_Value: 경건비는 얼마인가요?? (마지막 값, 숫자 추출 및 0 처리)
-    df['Final_Value'] = df_raw['Final_Value_Text'].astype(str).str.replace(r'[^\d]', '', regex=True).replace('', '0').astype(float)
+    all_participants = sorted(df['Participant'].unique().tolist())
     
-    # 최종 데이터 확인
-    st.subheader('🚀 데이터 클리닝 결과 (최근 5건)')
-    st.dataframe(df.tail())
-
-    # --- 데이터 분석 및 시각화 ---
-    
-    # 3. 참여자 선택 필터 (사이드바)
-    all_participants = ['전체'] + sorted(df['Participant'].unique().tolist())
     selected_participant = st.sidebar.selectbox('참여자 선택', all_participants)
 
-    if selected_participant != '전체':
-        df_filtered = df[df['Participant'] == selected_participant].copy()
-        st.subheader(f"👤 **{selected_participant}** 님의 누적 데이터")
-    else:
-        df_filtered = df.copy()
-        st.subheader("👥 전체 참여자 누적 데이터")
+    if not selected_participant:
+         st.warning("경고: 스프레드시트에 유효한 참여자 이름이 없습니다.")
+         st.stop()
     
-    st.markdown('---')
+    # --- 필터링 및 일별 합산 ---
+    df_filtered = df[df['Participant'] == selected_participant].copy()
     
-    # A. 참여자별 누적 참석 횟수 (전체 참여자 대상)
-    if selected_participant == '전체':
-        st.markdown('### 참여자별 총 참석 횟수')
-        attendance_counts = df.groupby('Participant')['Attended'].sum().sort_values(ascending=False)
-        
-        fig, ax = plt.subplots(figsize=(10, 5))
-        attendance_counts.plot(kind='bar', ax=ax, color='skyblue')
-        ax.set_title('참여자별 총 참석 횟수')
-        ax.set_ylabel('총 횟수 (참석:1)')
-        ax.set_xlabel('참여자 이름')
-        plt.xticks(rotation=45, ha='right')
-        st.pyplot(fig)
-        
-        st.markdown('---')
+    # 일별 데이터를 보여주기 위해, 해당 날짜에 여러 항목이 기록된 경우를 대비하여 날짜별로 그룹화하여 합산합니다.
+    df_filtered_daily = df_filtered.groupby('Date').agg({
+        'Attendance': 'sum',
+        'QT_Count': 'sum',
+        'Chapter_Reading': 'sum',
+        'Prayer_Count': 'sum',
+        'Devotion_Fee': 'sum'
+    }).reset_index()
     
-    # B. 시간 경과에 따른 누적 경건비 추이
-    st.markdown('### 시간 경과에 따른 누적 경건비 추이')
+    st.header(f"👤 **{selected_participant}** 님 활동 분석 (일별)")
     
-    # 누적 금액 계산
-    df_plot = df_filtered.copy()
+    if df_filtered_daily.empty:
+        st.warning(f"경고: {selected_participant} 님의 데이터가 스프레드시트에서 발견되지 않았습니다.")
+        st.stop()
 
-    if selected_participant == '전체':
-        # 전체일 경우 참여자별로 누적 금액 계산
-        df_plot['Cumulative_Value'] = df_plot.groupby('Participant')['Final_Value'].cumsum()
-        
-        fig, ax = plt.subplots(figsize=(10, 6))
-        for name, group in df_plot.groupby('Participant'):
-            ax.plot(group['Date'], group['Cumulative_Value'], label=name)
-        
-        ax.set_title('참여자별 누적 경건비 추이')
-        ax.legend(title='참여자', bbox_to_anchor=(1.05, 1), loc='upper left')
-        ax.set_ylabel('누적 금액 (원)')
-        ax.set_xlabel('날짜')
-        plt.tight_layout()
-        st.pyplot(fig)
-        
-    else:
-        # 특정 참여자라면, 해당 참여자의 누적 합계만 계산
-        df_plot['Cumulative_Value'] = df_plot['Final_Value'].cumsum()
-        
-        fig, ax = plt.subplots(figsize=(10, 6))
-        ax.plot(df_plot['Date'], df_plot['Cumulative_Value'], marker='o', color='green')
-        ax.set_title(f"{selected_participant} 님의 누적 경건비 추이")
-        ax.set_ylabel('누적 금액 (원)')
-        ax.set_xlabel('날짜')
-        plt.xticks(rotation=45, ha='right')
-        st.pyplot(fig)
+    # --- 그래프 1: 활동 기록 추이 (Attendance, QT, Reading, Prayer) ---
+    
+    st.subheader('1. 활동 기록 일별 추이 (참석, QT, 읽기, 기도)')
+    
+    fig, ax = plt.subplots(figsize=(12, 6))
+    
+    ax.plot(df_filtered_daily['Date'], df_filtered_daily['Attendance'], label='참석 (1/0)', marker='o', linestyle='--')
+    ax.plot(df_filtered_daily['Date'], df_filtered_daily['QT_Count'], label='QT 횟수', marker='s')
+    ax.plot(df_filtered_daily['Date'], df_filtered_daily['Chapter_Reading'], label='말씀 읽기 장수', marker='^')
+    ax.plot(df_filtered_daily['Date'], df_filtered_daily['Prayer_Count'], label='기도 횟수', marker='x')
+    
+    # QT_Count에 레이블 추가 (소수점 없이 정수로 표시)
+    for i, row in df_filtered_daily.iterrows():
+        if row['QT_Count'] > 0: # 0이 아닌 값만 표시하여 그래프를 덜 복잡하게 유지
+            ax.text(
+                row['Date'], 
+                row['QT_Count'], 
+                f"{int(row['QT_Count'])}회", 
+                fontsize=9, 
+                ha='center', 
+                va='bottom',
+                color='darkblue'
+            )
+        if row['Chapter_Reading'] > 0: # 0이 아닌 값만 표시하여 그래프를 덜 복잡하게 유지
+            ax.text(
+                row['Date'], 
+                row['Chapter_Reading'], 
+                f"{int(row['Chapter_Reading'])}장", 
+                fontsize=9, 
+                ha='center', 
+                va='bottom',
+                color='darkblue'
+            )
+        if row['Prayer_Count'] > 0: # 0이 아닌 값만 표시하여 그래프를 덜 복잡하게 유지
+            ax.text(
+                row['Date'], 
+                row['Prayer_Count'], 
+                f"{int(row['Prayer_Count'])}회", 
+                fontsize=9, 
+                ha='center', 
+                va='bottom',
+                color='darkblue'
+            )
+            
+    ax.set_title(f"{selected_participant} 님의 주요 활동 일별 추이")
+    ax.set_xlabel('날짜')
+    ax.set_ylabel('일별 값')
+    ax.legend(loc='upper left', bbox_to_anchor=(1.0, 1.0))
+    plt.xticks(rotation=45, ha='right')
+    plt.grid(True, linestyle='--', alpha=0.6)
+    plt.tight_layout()
+    st.pyplot(fig)
+
+    st.markdown('---')
+
+    # --- 그래프 2: 경건비 추이 (Devotion Fee) ---
+    
+    st.subheader('2. 경건비 일별 값 추이')
+    
+    fig2, ax2 = plt.subplots(figsize=(12, 6))
+    
+    # 일별 값으로 변경
+    ax2.plot(df_filtered_daily['Date'], df_filtered_daily['Devotion_Fee'], 
+             label='일별 경건비', marker='D', color='green', linewidth=2)
+             
+    # Devotion_Fee에 레이블 추가 (콤마와 '원' 단위로 표시)
+    for i, row in df_filtered_daily.iterrows():
+        if row['Devotion_Fee'] > 0: # 0이 아닌 값만 표시
+            ax2.text(
+                row['Date'], 
+                row['Devotion_Fee'], 
+                f"{int(row['Devotion_Fee']):,}원", # 천 단위 콤마 추가
+                fontsize=9, 
+                ha='center', 
+                va='bottom',
+                color='red'
+            )
+    
+    ax2.set_title(f"{selected_participant} 님의 일별 경건비 추이")
+    ax2.set_xlabel('날짜')
+    ax2.set_ylabel('일별 금액 (원)')
+    plt.xticks(rotation=45, ha='right')
+    plt.grid(True, linestyle='--', alpha=0.6)
+    plt.tight_layout()
+    st.pyplot(fig2)
