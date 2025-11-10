@@ -3,7 +3,34 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import re 
 import warnings
-import gspread # gspread 라이브러리 추가
+import gspread
+
+import matplotlib.pyplot as plt
+import matplotlib.font_manager as fm
+import os
+import streamlit as st # st.error 등을 사용하기 위해 필요
+
+# 폰트 파일 경로 (NanumGothic.ttf가 app.py와 같은 루트 폴더에 있다고 가정)
+FONT_PATH = 'NanumGothic.ttf' 
+
+try:
+    # 폰트 파일을 Matplotlib 폰트 관리자에 수동으로 추가합니다.
+    fm.fontManager.addfont(FONT_PATH)
+    
+    # 등록된 폰트 이름 가져오기
+    font_name = fm.FontProperties(fname=FONT_PATH).get_name()
+    
+    # Matplotlib 기본 폰트 설정
+    plt.rc('font', family=font_name)
+    
+    # 마이너스 기호 깨짐 방지
+    plt.rcParams['axes.unicode_minus'] = False 
+    
+except FileNotFoundError:
+    st.error("오류: NanumGothic.ttf 파일을 찾을 수 없습니다. 경로를 확인하세요.")
+except Exception as e:
+    st.error(f"폰트 설정 중 예기치 않은 오류 발생. 오류: {e}")
+    plt.rc('font', family='sans-serif') # 기본 폰트로 대체
 
 warnings.filterwarnings('ignore', category=FutureWarning)
 
@@ -60,7 +87,31 @@ if not df_raw.empty:
     df = pd.DataFrame()
     
     # 2-1. Date: 날짜 형식 변환
-    df['Date'] = pd.to_datetime(df_raw['Timestamp']).dt.strftime('%Y-%m-%d')
+    TIME_FORMAT = '%Y. %m. %d %p %I:%M:%S'
+
+    df['Date'] = pd.to_datetime(
+        df_raw['Timestamp'], 
+        format=TIME_FORMAT, 
+        errors='coerce'  # 변환할 수 없는 값은 NaT(Not a Time)으로 처리하여 오류 방지
+    )
+
+    # NaT로 변환된 행 제거 (선택 사항이지만 데이터 안정성 위해 권장)
+    df = df.dropna(subset=['Date'])
+
+    # 마지막으로 원하는 날짜 형식으로 변환
+    TIME_FORMAT = '%Y. %m. %d %p %I:%M:%S'
+
+    df['Date'] = pd.to_datetime(
+        df_raw['Timestamp'], 
+        format=TIME_FORMAT, 
+        errors='coerce'  # 변환할 수 없는 값은 NaT(Not a Time)으로 처리하여 오류 방지
+    )
+
+    # NaT로 변환된 행 제거 (선택 사항이지만 데이터 안정성 위해 권장)
+    df = df.dropna(subset=['Date'])
+
+    # 마지막으로 원하는 날짜 형식으로 변환
+    df['Date'] = df['Date'].dt.strftime('%Y-%m-%d')
     
     # 2-2. Participant: 참여자 이름 정리
     df['Participant'] = df_raw['Participant'].astype(str).str.strip()
