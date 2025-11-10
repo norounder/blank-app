@@ -74,25 +74,47 @@ if not df_raw.empty:
     df['QT_Count'] = df_raw['Chapter_Count_Text'].astype(str).str.extract('(\d+)').astype(float).fillna(0)
     df['Chapter_Reading'] = df_raw['Chapter_Range_Text'].astype(str).str.extract(r'(\d+)\D*$').astype(float).fillna(0)
     df['Prayer_Count'] = df_raw['Days_Text'].astype(str).str.extract('(\d+)').astype(float).fillna(0)
-    # 정규표현식을 사용하여 숫자만 추출하고, 빈 문자열을 '0'으로 대체 후 float 변환
     df['Devotion_Fee'] = df_raw['Final_Value_Text'].astype(str).str.replace(r'[^\d]', '', regex=True).replace('', '0').astype(float)
     
     # --- UI 및 필터 ---
     
     st.sidebar.header('분석 대상 선택')
     
-    all_participants = sorted(df['Participant'].unique().tolist())
+    # 드롭다운에 안내 메시지 추가
+    GUIDE_OPTION = '-- 참여자를 선택하세요 --' 
+    all_participants = [GUIDE_OPTION] + sorted(df['Participant'].unique().tolist())
     
     selected_participant = st.sidebar.selectbox('참여자 선택', all_participants)
 
-    if not selected_participant:
-         st.warning("경고: 스프레드시트에 유효한 참여자 이름이 없습니다.")
-         st.stop()
+    if selected_participant == GUIDE_OPTION:
+        # --- 초기 안내 페이지 ---
+        st.header('환영합니다! 🙏 경건 시트 분석 대시보드')
+        st.markdown('---')
+        st.info("👈 **왼쪽 사이드바**에서 분석을 원하는 **참여자 이름**을 선택해 주세요.")
+        
+        st.subheader('📊 이 대시보드가 보여주는 것')
+        st.markdown(
+            """
+            이 대시보드는 Google Sheets에 기록된 **참여자별 경건 활동의 일별 추이**를 시각화합니다.
+            
+            * **그래프 1 (활동 추이):** 예배 참석 여부(1/0), QT 횟수, 말씀 읽기 장수, 기도 횟수를 날짜별로 보여줍니다.
+            * **그래프 2 (경건비 추이):** 일별 경건비를 금액과 함께 추이로 보여줍니다.
+            """
+        )
+        st.subheader('🔍 사용 방법')
+        st.markdown(
+            """
+            1.  **왼쪽 사이드바의 드롭다운 메뉴**를 클릭합니다.
+            2.  목록에서 본인의 **이름**을 선택합니다.
+            3.  선택 후, 본인의 활동 및 경건비 추이 그래프가 메인 화면에 표시됩니다.
+            """
+        )
+        st.stop() # 안내 페이지 표시 후 코드 실행 중단
     
-    # --- 필터링 및 일별 합산 ---
+    
+    # --- 필터링 및 일별 합산 (선택된 경우) ---
     df_filtered = df[df['Participant'] == selected_participant].copy()
     
-    # 일별 데이터를 보여주기 위해, 해당 날짜에 여러 항목이 기록된 경우를 대비하여 날짜별로 그룹화하여 합산합니다.
     df_filtered_daily = df_filtered.groupby('Date').agg({
         'Attendance': 'sum',
         'QT_Count': 'sum',
@@ -118,38 +140,14 @@ if not df_raw.empty:
     ax.plot(df_filtered_daily['Date'], df_filtered_daily['Chapter_Reading'], label='말씀 읽기 장수', marker='^')
     ax.plot(df_filtered_daily['Date'], df_filtered_daily['Prayer_Count'], label='기도 횟수', marker='x')
     
-    # QT_Count에 레이블 추가 (소수점 없이 정수로 표시)
+    # QT, 읽기, 기도 횟수에 레이블 추가
     for i, row in df_filtered_daily.iterrows():
-        if row['QT_Count'] > 0: # 0이 아닌 값만 표시하여 그래프를 덜 복잡하게 유지
-            ax.text(
-                row['Date'], 
-                row['QT_Count'], 
-                f"{int(row['QT_Count'])}회", 
-                fontsize=9, 
-                ha='center', 
-                va='bottom',
-                color='darkblue'
-            )
-        if row['Chapter_Reading'] > 0: # 0이 아닌 값만 표시하여 그래프를 덜 복잡하게 유지
-            ax.text(
-                row['Date'], 
-                row['Chapter_Reading'], 
-                f"{int(row['Chapter_Reading'])}장", 
-                fontsize=9, 
-                ha='center', 
-                va='bottom',
-                color='darkblue'
-            )
-        if row['Prayer_Count'] > 0: # 0이 아닌 값만 표시하여 그래프를 덜 복잡하게 유지
-            ax.text(
-                row['Date'], 
-                row['Prayer_Count'], 
-                f"{int(row['Prayer_Count'])}회", 
-                fontsize=9, 
-                ha='center', 
-                va='bottom',
-                color='darkblue'
-            )
+        if row['QT_Count'] > 0:
+            ax.text(row['Date'], row['QT_Count'], f"{int(row['QT_Count'])}회", fontsize=9, ha='center', va='bottom', color='darkblue')
+        if row['Chapter_Reading'] > 0:
+            ax.text(row['Date'], row['Chapter_Reading'], f"{int(row['Chapter_Reading'])}장", fontsize=9, ha='center', va='top', color='darkgreen')
+        if row['Prayer_Count'] > 0:
+            ax.text(row['Date'], row['Prayer_Count'], f"{int(row['Prayer_Count'])}회", fontsize=9, ha='center', va='bottom', color='darkred')
             
     ax.set_title(f"{selected_participant} 님의 주요 활동 일별 추이")
     ax.set_xlabel('날짜')
@@ -168,22 +166,13 @@ if not df_raw.empty:
     
     fig2, ax2 = plt.subplots(figsize=(12, 6))
     
-    # 일별 값으로 변경
     ax2.plot(df_filtered_daily['Date'], df_filtered_daily['Devotion_Fee'], 
              label='일별 경건비', marker='D', color='green', linewidth=2)
              
-    # Devotion_Fee에 레이블 추가 (콤마와 '원' 단위로 표시)
+    # Devotion_Fee에 레이블 추가
     for i, row in df_filtered_daily.iterrows():
-        if row['Devotion_Fee'] > 0: # 0이 아닌 값만 표시
-            ax2.text(
-                row['Date'], 
-                row['Devotion_Fee'], 
-                f"{int(row['Devotion_Fee']):,}원", # 천 단위 콤마 추가
-                fontsize=9, 
-                ha='center', 
-                va='bottom',
-                color='red'
-            )
+        if row['Devotion_Fee'] > 0:
+            ax2.text(row['Date'], row['Devotion_Fee'], f"{int(row['Devotion_Fee']):,}원", fontsize=9, ha='center', va='bottom', color='red')
     
     ax2.set_title(f"{selected_participant} 님의 일별 경건비 추이")
     ax2.set_xlabel('날짜')
