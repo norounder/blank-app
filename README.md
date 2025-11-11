@@ -10,12 +10,10 @@
 
 ### 1.1. `secrets.toml` 파일 생성 (필수)
 
-**절대 외부에 공개되어서는 안 되는 민감한 정보**가 포함되므로, GitHub에 올라와 있는 `secrets.toml.example` 파일을 참고하여 **`.streamlit/secrets.toml`** 파일을 **직접 생성**해야 합니다.
+**절대 외부에 공개되어서는 안 되는 민감한 정보**가 포함되므로, GitHub에 올라와 있는 `secrets.example.toml` 파일을 참고하여 **`.streamlit/secrets.toml`** 파일을 **직접 생성**해야 합니다.
 
 ```bash
-# 로컬 환경에서 .streamlit 폴더 안에 파일을 생성합니다.
-mkdir .streamlit
-cp secrets.toml.example .streamlit/secrets.toml
+cp secrets.example.toml .streamlit/secrets.toml
 ```
 
 ### 1.2. `secrets.toml` 설정 채우기
