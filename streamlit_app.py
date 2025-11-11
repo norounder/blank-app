@@ -26,8 +26,10 @@ except Exception as e:
 
 
 # --- Google Sheets API 설정 ---
-SPREADSHEET_ID = '1mBwIdifaAgZN107f0lYz2i-WvoPBwesSqkzCNtUOX2U' 
-SHEET_NAME = '경건시트' 
+SPREADSHEET_ID = st.secrets["spread_sheet"]["spreadsheet_id"] 
+SHEET_NAME = st.secrets["spread_sheet"]["sheet_name"]
+CORRECTION_MAP = dict(st.secrets.get("name_correction_map", {}))
+ALIAS_MAP = dict(st.secrets.get("name_alias_map", {}))
 
 @st.cache_data(ttl=600) 
 def load_data_from_gspread():
@@ -66,8 +68,16 @@ if not df_raw.empty:
     df = df.dropna(subset=['Date_Time']).copy() 
     df['Date'] = df['Date_Time'].dt.strftime('%Y-%m-%d')
     
-    # 2. 참여자 정리
+    # 2. 참여자 정리 및 이름 통일/별명 처리 <------------------ 이 부분 수정
     df['Participant'] = df_raw['Participant'].astype(str).str.strip()
+    
+    # A) 이름 통일 적용 (오타/이형을 정식 이름으로 매핑)
+    # 이 과정 후에는 '전햬지'는 '전혜지'로 변경됩니다.
+    df['Participant'] = df['Participant'].replace(CORRECTION_MAP)
+
+    # B) 별명 적용 (정식 이름을 표시할 별명으로 매핑)
+    # 이 과정 후에는 '유서윤'은 '유오뎅'으로 변경됩니다.
+    df['Display_Name'] = df['Participant'].replace(ALIAS_MAP)
     
     # 3. 항목별 데이터 추출 및 정리
     df['Attendance'] = df_raw['Attendance_Text'].astype(str).str.contains('참석', na=False).astype(int)
@@ -78,24 +88,24 @@ if not df_raw.empty:
     
     # --- UI 및 필터 ---
     
-    st.sidebar.header('분석 대상 선택')
+    st.sidebar.header('이름 선택')
     
-    # 드롭다운에 안내 메시지 추가
-    GUIDE_OPTION = '-- 참여자를 선택하세요 --' 
-    all_participants = [GUIDE_OPTION] + sorted(df['Participant'].unique().tolist())
-    
-    selected_participant = st.sidebar.selectbox('참여자 선택', all_participants)
+    # 드롭다운은 'Display_Name'을 기반으로 목록을 생성합니다.
+    GUIDE_OPTION = '-- 이름을 선택하세요 --' 
+    all_participants = [GUIDE_OPTION] + sorted(df['Display_Name'].unique().tolist()) # <--- Display_Name 사용
+
+    selected_participant = st.sidebar.selectbox('이름 선택', all_participants) # <--- Display_Name 사용
 
     if selected_participant == GUIDE_OPTION:
         # --- 초기 안내 페이지 ---
 
         st.markdown('---')
-        st.info("👈 **왼쪽 사이드바**에서 분석을 원하는 **참여자 이름**을 선택해 주세요.")
-        
+        st.info("👈 **왼쪽 사이드바**에서 분석을 원하는 **이름**을 선택해 주세요.")
+
         st.subheader('📊 이 대시보드가 보여주는 것')
         st.markdown(
             """
-            이 대시보드는 Google Sheets에 기록된 **참여자별 경건 활동의 일별 추이**를 시각화합니다.
+            이 대시보드는 Google Sheets에 기록된 **사람별 경건 활동의 일별 추이**를 시각화합니다.
             
             * **그래프 1 (활동 추이):** 예배 참석 여부(1/0), QT 횟수, 말씀 읽기 장수, 기도 횟수를 날짜별로 보여줍니다.
             * **그래프 2 (경건비 추이):** 일별 경건비를 금액과 함께 추이로 보여줍니다.
@@ -112,8 +122,8 @@ if not df_raw.empty:
         st.stop() # 안내 페이지 표시 후 코드 실행 중단
     
     
-    # --- 필터링 및 일별 합산 (선택된 경우) ---
-    df_filtered = df[df['Participant'] == selected_participant].copy()
+# 필터링은 Display_Name을 기준으로 합니다.
+    df_filtered = df[df['Display_Name'] == selected_participant].copy() # <--- Display_Name 사용
     
     df_filtered_daily = df_filtered.groupby('Date').agg({
         'Attendance': 'sum',
@@ -123,7 +133,7 @@ if not df_raw.empty:
         'Devotion_Fee': 'sum'
     }).reset_index()
     
-    st.header(f"👤 **{selected_participant}** 님 활동 분석 (일별)")
+    st.header(f"👤 **{selected_participant}** 님 활동 분석 (일별)") # <--- selected_participant (별명) 사용
     
     if df_filtered_daily.empty:
         st.warning(f"경고: {selected_participant} 님의 데이터가 스프레드시트에서 발견되지 않았습니다.")
